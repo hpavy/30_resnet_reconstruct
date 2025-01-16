@@ -19,8 +19,6 @@ def pde(
     w_0,
     L_adim,
     V_adim,
-    ya0_mean,
-    ya0_std,
 ):
     # je sais qu'il fonctionne bien ! Il a été vérifié
     """Calcul la pde
@@ -90,9 +88,9 @@ def pde(
         + (v * v_std + v_mean) * (v_std / y_std) * v_y
         + (p_std / y_std) * p_y
         - (1 / Re) * ((v_std / (x_std**2)) * v_xx + (v_std / (y_std**2)) * v_yy)
-        - (input[:, 3] * ya0_std + ya0_mean)
-        * w_0**2
-        * torch.cos(w_0 * (t_std * input[:, 2] + t_mean))
+        # - (input[:, 3] * ya0_std + ya0_mean)
+        # * w_0**2
+        # * torch.cos(w_0 * (t_std * input[:, 2] + t_mean))
     )
     equ_3 = (u_std / x_std) * u_x + (v_std / y_std) * v_y
     return equ_1, equ_2, equ_3
@@ -104,7 +102,7 @@ def pde(
 class PINNs(nn.Module):
     def __init__(self, hyper_param):
         super().__init__()
-        self.init_layer = nn.ModuleList([nn.Linear(4, hyper_param["nb_neurons"])])
+        self.init_layer = nn.ModuleList([nn.Linear(3, hyper_param["nb_neurons"])])
         self.hiden_layers = nn.ModuleList(
             [
                 nn.Linear(hyper_param["nb_neurons"], hyper_param["nb_neurons"])

@@ -50,6 +50,7 @@ def train(
     )
 
     if device == torch.device("cuda"):
+        print('Cuda train')
         stream_data = torch.cuda.Stream()
         stream_pde = torch.cuda.Stream()
         stream_border = torch.cuda.Stream()
@@ -63,8 +64,6 @@ def train(
 
     w_0 = torch.tensor(w_0, dtype=torch.float32, device=device)
     Re = torch.tensor(Re, dtype=torch.float32, device=device)
-    ya0_mean = mean_std["ya0_mean"].clone().to(device)
-    ya0_std = mean_std["ya0_std"].clone().to(device)
     x_std = mean_std["x_std"].clone().to(device)
     y_std = mean_std["y_std"].clone().to(device)
     u_mean = mean_std["u_mean"].clone().to(device)
@@ -79,7 +78,7 @@ def train(
     X_border = X_border.to(device)
     X_border_test = X_border_test.to(device).detach()
     X_pde = X_pde.to(device)
-    X_test_pde = X_test_pde.to(device)
+    X_test_pde = X_test_pde.to(device).requires_grad_(True)
     X_train = X_train.to(device)
     U_train = U_train.to(device)
     X_test_data = X_test_data.to(device).detach()
@@ -99,38 +98,36 @@ def train(
             torch.tensor([k for k in range(nb_batch)], device=device)
         ):
         
-            # with torch.cuda.stream(stream_pde):
+            with torch.cuda.stream(stream_pde):
                 # loss du pde
-                # X_pde_batch = (
-                #     X_pde[batch * batch_size : (batch + 1) * batch_size, :]
-                #     .clone()
-                #     .requires_grad_(True)
-                # )
-                # pred_pde = model(X_pde_batch)
-                # pred_pde1, pred_pde2, pred_pde3 = pde(
-                #     pred_pde,
-                #     X_pde_batch,
-                #     Re=Re,
-                #     x_std=x_std,
-                #     y_std=y_std,
-                #     u_mean=u_mean,
-                #     v_mean=v_mean,
-                #     p_std=p_std,
-                #     t_std=t_std,
-                #     t_mean=t_mean,
-                #     u_std=u_std,
-                #     v_std=v_std,
-                #     ya0_mean=ya0_mean,
-                #     ya0_std=ya0_std,
-                #     w_0=w_0,
-                #     L_adim=L_adim,
-                #     V_adim=V_adim,
-                # )
-                # loss_pde = (
-                #     torch.mean(pred_pde1**2)
-                #     + torch.mean(pred_pde2**2)
-                #     + torch.mean(pred_pde3**2)
-                # )
+                X_pde_batch = (
+                    X_pde[batch * batch_size : (batch + 1) * batch_size, :]
+                    .clone()
+                    .requires_grad_(True)
+                )
+                pred_pde = model(X_pde_batch)
+                pred_pde1, pred_pde2, pred_pde3 = pde(
+                    pred_pde,
+                    X_pde_batch,
+                    Re=Re,
+                    x_std=x_std,
+                    y_std=y_std,
+                    u_mean=u_mean,
+                    v_mean=v_mean,
+                    p_std=p_std,
+                    t_std=t_std,
+                    t_mean=t_mean,
+                    u_std=u_std,
+                    v_std=v_std,
+                    w_0=w_0,
+                    L_adim=L_adim,
+                    V_adim=V_adim,
+                )
+                loss_pde = (
+                    torch.mean(pred_pde1**2)
+                    + torch.mean(pred_pde2**2)
+                    + torch.mean(pred_pde3**2)
+                )
 
             with torch.cuda.stream(stream_data):
                 X_train_batch = (
@@ -174,7 +171,7 @@ def train(
 
             loss_totale = (
                 weight_data * loss_data
-                #+ weight_pde * loss_pde
+                + weight_pde * loss_pde
                 + weight_border * loss_border_cylinder
             )
 
@@ -185,7 +182,7 @@ def train(
             with torch.no_grad():
                 total_batch += loss_totale.item()
                 data_batch += loss_data.item()
-                # pde_batch += loss_pde.item()
+                pde_batch += loss_pde.item()
                 border_batch += loss_border_cylinder.item()
 
         ######## A partir d'ici #######
@@ -207,8 +204,6 @@ def train(
             t_mean=t_mean,
             u_std=u_std,
             v_std=v_std,
-            ya0_mean=ya0_mean,
-            ya0_std=ya0_std,
             w_0=w_0,
             L_adim=L_adim,
             V_adim=V_adim,
@@ -251,20 +246,20 @@ def train(
             border_batch /= nb_batch
             if dynamic_weights:
                 weight_data_hat = weight_data + lr_weights * data_batch
-                # weight_pde_hat = weight_pde + lr_weights * pde_batch
+                weight_pde_hat = weight_pde + lr_weights * pde_batch
                 weight_border_hat = weight_border + lr_weights * border_batch
-                sum_weight = weight_data_hat + weight_border_hat  #  + weight_pde_hat 
+                sum_weight = weight_data_hat + weight_border_hat + weight_pde_hat
                 weight_data = weight_data_hat / sum_weight
                 weight_border = weight_border_hat / sum_weight
-                # weight_pde = weight_pde_hat / sum_weight
+                weight_pde = weight_pde_hat / sum_weight
             test_loss["total"].append(loss_test.item())
             test_loss["data"].append(loss_test_data.item())
             test_loss["pde"].append(loss_test_pde.item())
             test_loss["border"].append(loss_test_border.item())
             train_loss["total"].append(total_batch.item())
             train_loss["data"].append(data_batch.item())
-            # train_loss["pde"].append(pde_batch.item())
-            train_loss["pde"].append(-1.)
+            train_loss["pde"].append(pde_batch.item())
+            # train_loss["pde"].append(-1.)
             train_loss["border"].append(border_batch.item())
 
         print(f"---------------------\nEpoch {epoch+1}/{nb_it_tot} :")

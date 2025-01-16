@@ -1,1 +1,1 @@
-On essaye de faire un surrogate modele à ppartir des PINNs, on ajoute juste un paramètre à notre réseau de neuronne
+On reconstruit un écoulement avec 15 couches de 64 
